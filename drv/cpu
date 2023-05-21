@@ -1,0 +1,1363 @@
+<?php
+$cpu_config = $GLOBALS["vm"]["config"]["CPU"];
+$GLOBALS["vm"]["code_log"] = '';
+$GLOBALS["vm"]["code_error_log"] = '';
+define('CPU_NAME'              ,  $cpu_config["name"]         );
+define('CPU_NAME_ALTERNATIVE'  ,  $cpu_config["alt"]          );
+define('CPU_ARCHITECTURE'      ,  $cpu_config["arch"]         );
+define('CPU_CODE_NAME'         ,  $cpu_config["code_name"]    );
+define('CPU_CODE'              ,  $cpu_config["code_cpu"]     );
+define('CPU_VERSION'           ,  $cpu_config["version"]      );
+define('CPU_CODE_VERSION'      ,  $cpu_config["code_version"] );
+define('CPU_CREATOR'           ,  $cpu_config["creator"]      );
+define('CPU_CORE'              ,  $cpu_config["core"]         );
+define('CPU_THREAD'            ,  $cpu_config["thread"]       );
+define('CPU_CACHE'             ,  $cpu_config["cache"]        );
+define('CPU_FREQUENCY'         ,  $cpu_config["feq"]          );
+class CPU_Thread{
+	static function create_thread($php_code){
+		$id = rand();
+		CPU::create_sm_block("CREATED_THREAD", ((int)CPU::read_sm_block("CREATED_THREAD")+1));
+		eval('
+		class Thread_Task_'.$id.' extends Threaded
+		{
+			public $response;
+
+			public function run_thread()
+			{
+				eval(base64_decode("'.base64_encode($php_code).'"));
+			}
+		}');
+		return $id;
+	}
+	static function run_thread($id){
+		if(!class_exists("Thread_Task_$id"))
+			return false;
+		eval('$task = new Thread_Task_'.$id.';');
+		$thread = new class($task) extends Thread {
+			private $task;
+			public function __construct(Threaded $task)
+			{
+				 $this->task = $task;
+			}
+			
+			public function run()
+			{
+				CPU::create_sm_block("RUNNING_THREAD", ((int)CPU::read_sm_block("RUNNING_THREAD")+1));
+				$this->task->run_thread();
+				CPU::create_sm_block("RUNNING_THREAD", ((int)CPU::read_sm_block("RUNNING_THREAD")-1));
+			}
+		};
+		$thread->start();
+		return true;
+	}
+}
+class cpu{
+	static function _is_debug(){
+		if(isset($GLOBALS["vm"]["config"]["debug"]))
+			return $GLOBALS["vm"]["config"]["debug"];
+		return 0;
+	}
+	function __construct(){
+	}
+	// get value from config with own format
+	function get_def_value($name){
+		$head = substr($name, 0, 1);
+		if($head == '@'){
+			$cpu_config = $GLOBAL["vm"]["config"];
+			$full_str = substr($name,1,(strlen($name)-1));
+			$explode = explode(':', $full_str);
+			if(count($explode) > 1){
+				$i = $cpu_config[$value[0]];
+				foreach($explode as $value)
+					if(is_array($i))
+						$i = $i[$value];
+				return $i;
+			}else{
+				return $full_str;
+			}
+		}else{
+			return '';
+		}
+	}
+	static function cache_read($name, $id = 0){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS["cache_controller_$id"]))
+			return false;
+		$control = $GLOBALS["cache_controller_$id"];
+		$read = $control->read_file($name);
+		if(cpu::_is_debug() == 1)
+			$GLOBALS['vm']['cache_log'] .= "[$id][READ] : ADDESS=$name LENGTH=".strlen($read)."\n";
+		return $read;
+	}
+	static function cache_write($name, $wdata, $id = 0){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS["cache_controller_$id"]))
+			return false;
+		$control = $GLOBALS["cache_controller_$id"];
+		$r = $control->create_file($name, $wdata);
+		if(cpu::_is_debug() == 1)
+			$GLOBALS['vm']['cache_log'] .= "[$id][WRITE] : ADDESS=$name LENGTH=".strlen($wdata)."\n";
+		if(!$r) echo "NOT_ENOUGH_CACHE\n";
+		return $r;
+	}
+	static function cache_clean($name, $id = 0){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS["cache_controller_$id"]))
+			return false;
+		$control = $GLOBALS["cache_controller_$id"];
+		if(cpu::_is_debug() == 1)
+			$GLOBALS['vm']['cache_log'] .= "[$id][DELETE] : ADDESS=$name\n";
+		return $control->delete_file($name);
+	}
+	static function create_sm_block($name, $data){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS['static_memory_controller']))
+			return false;
+		$control = $GLOBALS['static_memory_controller'];
+		$r = $control->create_file($name, $data);
+		if(cpu::_is_debug() == 1){
+			$GLOBALS['vm']["RAM_W"]++;
+			$GLOBALS['vm']['ram_log'] .= "[WRITE] : ADDESS=$name LENGTH=".strlen($data)."\n";
+		}
+		if(!$r) echo "NOT_ENOUGH_MEMORY\n";
+		return $r;
+	}
+	static function delete_sm_block($name){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS['static_memory_controller']))
+			return false;
+		$control = $GLOBALS['static_memory_controller'];
+		if(cpu::_is_debug() == 1){
+			$GLOBALS['vm']["RAM_D"]++;
+			$GLOBALS['vm']['ram_log'] .= "[DELETE] : ADDESS=$name\n";
+		}
+		return $control->delete_file($name);
+	}
+	static function read_sm_block($name){
+		$name = CSA::_hash($name);
+		if(!isset($GLOBALS['static_memory_controller']))
+			return false;
+		$control = $GLOBALS['static_memory_controller'];
+		$read = $control->read_file($name);
+		if(cpu::_is_debug() == 1){
+			$GLOBALS['vm']["RAM_R"]++;
+			$GLOBALS['vm']['ram_log'] .= "[READ] : ADDESS=$name LENGTH=".strlen($read)."\n";
+		}
+		return $read;
+	}
+	static function read_sm_cache(){
+		if(!isset($GLOBALS['static_memory_controller']))
+			return false;
+		$control = $GLOBALS['static_memory_controller'];
+		return $control->read_uad_data();
+	}
+	static function write_sm_cache($data){
+		if(!isset($GLOBALS['static_memory_controller']))
+			return false;
+		$control = $GLOBALS['static_memory_controller'];
+		return $control->write_uad_data($data);
+	}
+	static function execute_code($code){
+		$CSA = $GLOBALS["CSA"];
+		$code = $CSA->decrypt($code, CPU::cache_read('_KEY',0));
+		$line = explode("\n",$code);
+		$task = "thrd_".hash("sha512","MNC_".rand());
+		CPU::create_sm_block("RUNNING_TASK", ((int)CPU::read_sm_block("RUNNING_TASK")+1));
+		$MNC = new class() extends MNC{
+			public function __construct(){
+				parent::__construct();
+			}
+		};
+		$MNC->task_set($task);
+		$MNC->execute_code($line);
+		$err = '';
+		$e = $MNC->get_err_log();
+		foreach($e as $o)
+			$err .= $o."\n";
+		$GLOBALS["vm"]["code_error_log"] .= $err;
+		$MNC->clear();
+		CPU::create_sm_block("RUNNING_TASK", ((int)CPU::read_sm_block("RUNNING_TASK")-1));
+		unset($MNC);
+		unset($CSA);
+		unset($code);
+		unset($task);
+	}
+	static function LOAD_BIOS($path){
+		$data = file_get_contents($path);
+		$CSA = $GLOBALS["CSA"];
+		$code = $CSA->decrypt($data, CPU::cache_read('_KEY', 0));
+		$line = explode("\n",$code);
+		$MNC = new class() extends MNC{
+			public function __construct(){
+				parent::__construct();
+			}
+		};
+		$MNC->task_set("BIOS_MEMORY");
+		$MNC->execute_code($line);
+		$err = '';
+		$e = $MNC->get_err_log();
+		foreach($e as $o)
+			$err .= $o."\n";
+		$GLOBALS["vm"]["code_error_log"] .= $err;
+		$MNC->clear();
+		unset($MNC);
+		unset($CSA);
+		unset($code);
+		unset($data);
+	}
+}
+class KVSC{
+	private function check_prime($num){
+		if($num == 0 || $num == 1)
+			return false;
+		if($num <= 10)
+			return false;
+		for($i = 2; $i < $num; $i++)
+			if ($num % $i == 0 && $i != $num)
+				return false;
+		return true;
+	}
+	private function generatePrime(){
+		$p = 0;
+		while(!$this->check_prime($p))
+			$p = rand(11,100);
+		return $p;
+	}
+	function generateKey(){
+		$stt = "";
+		for($i = 0; $i < 256; $i++)
+			$stt .= chr(rand(12,25));
+		while(true){
+			$keygen = $this->generateNumkey($this->generatePrime(), $this->generatePrime());
+			$pkpb = [$keygen['n'], $keygen['e']];
+			$pkpv = [$keygen['n'], $keygen['d']];
+			$crypt_ed = $this->encrypt($stt, $pkpb);
+			$decrypt_ed = $this->decrypt($crypt_ed, $pkpv);
+			$crypt_edl = strlen($crypt_ed);
+			$decrypt_edl = strlen($decrypt_ed);
+			if(
+				(
+					$crypt_edl == $decrypt_edl &&
+					(
+						$crypt_edl != 0 &&
+						$decrypt_edl != 0
+					)
+				) &&
+				(
+					$crypt_ed == $decrypt_ed
+				) && 
+				(
+					$pkpb[1] != $pkpv[1]
+				)
+			)
+			return $this->MakeKey($keygen);
+		}
+	}
+	private function generateValidTNUM($num){
+		$t = 0;
+		$s = '';
+		while(true){
+			$g = rand(1,100);
+			$t += $g;
+			$s .= chr($g);
+			if($t > $num){
+				$t = 0;
+				$s = '';
+			}
+			if($t == $num)
+				return $s;
+		}
+	}
+	private function ParseTNUM($str){
+		$tnum = 0;
+		for($i = 0; $i < strlen($str); $i++)
+			$tnum += ord($str[$i]);
+		return $tnum;
+	}
+	private function MakeKey($keygen){
+		$n = $this->generateValidTNUM($keygen['n']);
+		$e = $this->generateValidTNUM($keygen['e']);
+		$d = $this->generateValidTNUM($keygen['d']);
+		$e_length = pack('i', strlen($e));
+		$n_length = pack('i', strlen($n));
+		$d_length = pack('i', strlen($d));
+		$pub_b64 = base64_encode($n_length.$e_length.$n.$e);
+		$pri_b64 = base64_encode($n_length.$d_length.$n.$d);
+		$key = 
+		[
+			'public' => "-----BEGIN KVSC PUBLIC KEY-----\n$pub_b64\n-----END KVSC PUBLIC KEY-----",
+			'private' => "-----BEGIN KVSC PRIVATE KEY-----\n$pri_b64\n-----END KVSC PRIVATE KEY-----",
+			'e' => $keygen['e']
+		];
+		return $key;
+	}
+	public function parse_key($key){
+		$key = str_replace("-----BEGIN KVSC PUBLIC KEY-----", "", $key);
+		$key = str_replace("-----END KVSC PUBLIC KEY-----", "", $key);
+		$key = str_replace("-----BEGIN KVSC PRIVATE KEY-----", "", $key);
+		$key = str_replace("-----END KVSC PRIVATE KEY-----", "", $key);
+		$key = str_replace("\r", "", $key);
+		$key = str_replace("\n", "", $key);
+		if(base64_encode(base64_decode($key)) != $key)
+			return false;
+		$key = base64_decode($key);
+		$key_length_1 = unpack('i', substr($key,0,4));
+		$key_length_2 = unpack('i', substr($key,4,4));
+		if(!isset($key_length_1[1]) && !isset($key_length_2[1]))
+			return false;
+		$num1 = $this->ParseTNUM(substr($key, 8, $key_length_1[1]));
+		$num2 = $this->ParseTNUM(substr($key, (8+$key_length_1[1]), $key_length_2[1]));
+		return [$num1, $num2];
+	}
+	private function generateExponent($phi){
+		while(true)
+		{
+			$e = rand(2,99999);
+			$num1 = $e;
+			$num2 = $phi;
+			while($num2 > 0){
+				$temp = $num1 % $num2;
+				$num1 = $num2;
+				$num2 = $temp;
+			}
+			if(
+				($num1 == 1) &&
+				($e > 1) &&
+				($e < $phi)
+			)
+			return $e;
+		}
+	}
+	private function generateNumkey($p, $q) {
+		$n = $p * $q;
+		$phi = ($p - 1) * ($q - 1);
+		$e = $this->generateExponent($phi);
+		$d = $this->modInverse($e, $phi);
+		return 
+		[
+			'n' => $n,
+			'e' => $e,
+			'd' => $d
+		];
+	}
+	private function modInverse($a, $m) {
+		$m0 = $m;
+		$y = 0;
+		$x = 1;
+		if ($m == 1)
+			return 0;
+		while ($a > 1) {
+			$q = intval($a / $m);
+			$t = $m;
+			$m = $a % $m;
+			$a = $t;
+			$t = $y;
+			$y = $x - $q * $y;
+			$x = $t;
+		}
+		if ($x < 0)
+			$x += $m0;
+		return $x;
+	}
+
+	private function encrypt_char($message, $publicKey) {
+		$n = $publicKey[0];
+		$e = $publicKey[1];
+		$m = $this->stringToNumber($message);
+		$c = bcpowmod($m, $e, $n);
+		return $c;
+	}
+	private function decrypt_char($ciphertext, $privateKey) {
+		$n = $privateKey[0];
+		$d = $privateKey[1];
+		$m = bcpowmod($ciphertext, $d, $n);
+		$message = $this->numberToString($m);
+		return $message;
+	}
+	function encrypt($message, $publicKey) {
+		if(!isset($publicKey[0]) && !isset($publicKey[1])) return '';
+		if(!is_numeric($publicKey[0]) && !is_numeric($publicKey[1])) return '';
+		if(strlen($message) == 0) return '';
+		$x = '';
+		for($i = 0; $i < strlen($message); $i++)
+			$x .= $this->numberToString($this->encrypt_char($message[$i], $publicKey));
+		return $x;
+	}
+	function decrypt($message, $privateKey) {
+		if(!isset($privateKey[0]) && !isset($privateKey[1])) return '';
+		if(!is_numeric($privateKey[0]) && !is_numeric($privateKey[1])) return '';
+		if(strlen($message) == 0) return '';
+		$x = '';
+		for($i = 0; $i < strlen($message);$i++)
+			$x .= $this->decrypt_char($this->stringToNumber($message[$i]), $privateKey);
+		return $x;
+	}
+	  
+	private function stringToNumber($string) {
+		$result = 0;
+		$len = strlen($string);
+		for ($i = 0; $i < $len; $i++)
+			$result = bcadd(bcmul($result, '256'), ord($string[$i]));
+		return $result;
+	}
+	private function numberToString($number) {
+		$result = '';
+		while ($number > 0) {
+			$result = chr(bcmod($number, '256')) . $result;
+			$number = bcdiv($number, '256');
+		}
+		return $result;
+	}
+}
+class CSA{
+	static function _log_debug($log = ''){
+		$GLOBALS["vm"]["CSA_debug_log"] .= $log;
+	}
+	static function _hash($str)
+	{
+		$chars = str_split($str);
+		$len = strlen($str);
+		$p = [];
+		foreach($chars as $char)
+			$p[] = unpack("C", $char)[1];
+		$h = 0;
+		while($len--) {
+			$h += $p[$len];
+			$h += ($h << 10);
+			$h ^= ($h >> 6);
+		}
+		$h += ($h << 3);
+		$h ^= ($h >> 11);
+		$h += ($h << 15);
+		if($h < 0) $h *= -1;
+		$chars = str_split($h,2);
+		$r = '';
+		foreach($chars as $char)
+			$r .= pack("C", $char);
+		$hexOut = bin2hex($r);
+		if(cpu::_is_debug() == 1)
+			CSA::_log_debug("\nHashing string (hblk-$hexOut).");
+		return $hexOut;
+	}
+	static function private_key_to_public_key($private_key){
+		if(!empty($private_key)){
+			$key = CSA::text2ascii(CSA::crypt_key(base64_decode($private_key)));
+			$eak = CSA::ekey($key);
+			$keysize = count($key);
+			$cipher = "";
+			for($i = 0; $i < $keysize; $i++)
+				$cipher .= chr($key[$i] ^ $eak);
+			if(cpu::_is_debug() == 1)
+				CSA::_log_debug("\nConverting key to public");
+			return base64_encode(CSA::crypt_key($cipher));
+		}else{
+			return false;
+			$this->error('turn private key to public key', 'missing private key');
+		}
+	}
+	static function decrypt($text, $private_key) {
+		if(!empty($private_key)){
+			$key = CSA::text2ascii(CSA::crypt_key(base64_decode($private_key)));
+			$eak = CSA::ekey($key);
+			$text = CSA::text2ascii($text);
+			$keysize = count($key);
+			$text_size = count($text);
+			$crypt = "";
+			for ($i = 0; $i < $text_size; $i++)
+				$crypt .= chr($text[$i] ^ ($key[$i % $keysize] ^ $eak));
+			if(cpu::_is_debug() == 1)
+				CSA::_log_debug("\nDecrypting");
+			return $crypt;
+		}else{
+			return false;
+			$this->error('decrypt','missing private key');
+		}
+	}
+	static function encrypt($text, $public_key){
+		if(!empty($public_key)){
+			$key = CSA::text2ascii(CSA::crypt_key(base64_decode($public_key)));
+			$eak = CSA::ekey($key);
+			$text = CSA::text2ascii($text);
+			$keysize = count($key);
+			$text_size = count($text);
+			$cipher = "";
+			for($i = 0; $i < $text_size; $i++)
+				$cipher .= chr($text[$i] ^ $key[$i % $keysize]);
+			if(cpu::_is_debug() == 1)
+				CSA::_log_debug("\nEncrypting");
+			return $cipher;
+		}else{
+			return false;
+			$this->error('encrypt', 'missing public key');
+		}
+	}
+	static function create_private_key($bit = 2048){
+		if(in_array($bit, array(128, 256, 512, 1024, 2048, 4096, 8192, 16384))){
+			$key = '';
+			$bit = $bit / 8;
+			$e = 0;
+			for($x = 0; $x < $bit; $x++){
+				$rand = rand(32, 126);
+				$key .= chr($rand);
+				$e = $e+$rand;
+				if(cpu::_is_debug() == 1 && $x % 2 == 0){
+					if($rand > 63)
+						CSA::_log_debug('+');
+					else
+						CSA::_log_debug('.');
+				}
+			}
+			unset($rand);
+			if(cpu::_is_debug == 1)
+				CSA::_log_debug("\ngenerate key finissed, e is ".$e);
+			unset($e);
+			return base64_encode(CSA::crypt_key($key));
+		}else{
+			return false;
+			$this->error('Create private key', 'invalid bit length');
+		}
+	}
+	static function crypt_key($text){
+		$key = CSA::text2ascii(base64_decode("EHMOTgxVQUQIKhxcWB1uRjVcVwI8B1pvSU0hEV4DKwhVWz4OVWRuAQ=="));
+		$text = CSA::text2ascii($text);
+		$keysize = count($key);
+		$text_size = count($text);
+		$cipher = "";
+		for($i = 0; $i < $text_size; $i++)
+			$cipher .= chr($text[$i] ^ $key[$i % $keysize]);
+		if(cpu::_is_debug() == 1)
+			CSA::_log_debug("\nCrypting key");
+		unset($key);
+		unset($keysize);
+		unset($text_dize);
+		return $cipher;
+	}
+	static function text2ascii($text){
+		return array_map('ord', str_split($text));
+	}
+	static function ekey($ascii) {
+		$text = 0;
+		foreach($ascii as $char)
+			$text = $text+$char;
+		return $text;
+	}
+	static function error($name, $reason){
+		$err = "<br><b>CSA Error:</b> Could not ".$name.", ".$reason." in <b>".$_SERVER['DOCUMENT_ROOT'].substr($_SERVER['SCRIPT_NAME'],1)."</b>.";
+		throw new Exception($err);
+	}
+}
+class MNC{
+	function __construct(){
+		$this->PATTERN = '/(?:\-?\d+\s*(?:\.?\d+\s*)?[\+\-\*\/\^\%])+\-?\d+\s*(?:\.?\d+\s*)?/';
+		$this->PARENTHESIS_DEPTH = 25;
+		$this->func = [];
+		$this->l = 1;
+		$this->err = true;
+		$this->isc = false;
+		$this->exit_ = false;
+		$this->task = '';
+		$this->_error_log = [];
+	}
+	const VERSION = "1.1.4";
+	function clear(){
+		$task = $this->task;
+		$this->func = [];
+		$this->data(null);
+		$this->l = 1;
+		$this->err = true;
+		$this->_error_log = [];
+		$this->isc = false;
+		CPU::delete_sm_block($task);
+	}
+	function data($set = null){
+		$task = $this->task;
+		if(is_null($set))
+			return json_decode(CPU::read_sm_block($task), true);
+		else
+			CPU::create_sm_block($task, json_encode($set));
+	}
+	function task_set($task){
+		$this->task = $task;
+	}
+	private function calculate($input){
+		if(strpos($input, '+') != null || strpos($input, '-') != null || strpos($input, '/') != null || strpos($input, '*') != null || strpos($input, '^') != null || strpos($input, '%') != null){
+			$input = str_replace(' ', '', $input);
+			$input = str_replace(',', '.', $input);
+			$input = preg_replace('[^0-9\.\^\%\+\-\*\/\(\)]', '', $input);
+			$i = 0;
+			while(strpos($input, '(') || strpos($input, ')')){
+				$input = preg_replace_callback('/\(([^\(\)]+)\)/', '$this->callback', $input);
+				$i++;
+				if($i > $this->PARENTHESIS_DEPTH)
+					break;
+			}
+			if(preg_match($this->PATTERN, $input, $match))
+				return $this->compute($match[0]);
+			if(is_numeric($input))
+				return $input;
+			return;
+		}
+		return $input;
+	}
+
+	private function compute($input){
+		return (0 + $input);
+	}
+	private function callback($input){
+		if(is_numeric($input[1]))
+			return $input[1];
+		elseif(preg_match($this->PATTERN, $input[1], $match))
+			return $this->compute($match[0]);
+		return;
+	}
+	private function replace_var($string){
+		$data = $this->data();
+		preg_match_all('/VAR:(.+):/U', $string, $var);
+		foreach($var[1] as $rvar){
+			$split = preg_split('/(\w+)\s*(\[(\w+|\d+)\])/', $rvar);
+			if(isset($split[1]) && !empty($split[1])){
+				preg_match('/(\w+)\s*(\[(\w+|\d+)\])/', $rvar, $o);
+				if(isset($data[$o[1]][$o[3]]))
+					$rvd = $data[$o[1]][$o[3]];
+				else
+					$rvd = null;
+				preg_match_all('/(\[(\w+|\d+)\])/', $split[1], $o);
+				foreach($o[2] as $v)
+					if(isset($rvd[$v]))
+						$rvd = $rvd[$v];
+					else
+						$rvd = null;
+			}else{
+				preg_match('/(\w+)\s*(\[(\w+|\d+)\])/', $rvar, $o);
+				if(isset($o[1]) and isset($o[3])){
+					if(isset($data[$o[1]][$o[3]]))
+						$rvd = $data[$o[1]][$o[3]];
+					else
+						$rvd = null;
+				}else{
+					if(isset($data[$rvar]))
+						$rvd = $data[$rvar];
+					else
+						$rvd = null;
+				}
+			}
+			if($this->isc) return $rvd;
+			$string = str_replace("VAR:$rvar:", $rvd, $string);
+		}
+		$svar = [];
+		$svar_name = 
+		[
+			"CPU_NAME",
+			"CPU_NAME_ALTERNATIVE",
+			"CPU_ARCHITECTURE",
+			"CPU_CODE_NAME",
+			"CPU_CODE",
+			"CPU_VERSION",
+			"CPU_CODE_VERSION",
+			"CPU_CREATOR",
+			"CPU_CORE",
+			"CPU_THREAD",
+			"CPU_CACHE",
+			"CPU_FREQUENCY",
+			"CPU_ENGINE",
+			"CPU_CRYPTO",
+			"DISK_ENGINE",
+			"RAM_ENGINE",
+			"CACHE_ENGINE",
+			"DISK_SIZE",
+			"DISK_FREE",
+			"DISK_USED",
+			"RAM_SIZE",
+			"RAM_FREE",
+			"RAM_USED",
+			"RUNNING_TASK",
+			"CREATED_THREAD",
+			"RUNNING_THREAD",
+			"CACHE0_SIZE",
+			"CACHE0_FREE",
+			"CACHE0_USED",
+			"CACHE1_SIZE",
+			"CACHE1_FREE",
+			"CACHE1_USED",
+			"CACHE2_SIZE",
+			"CACHE2_FREE",
+			"CACHE2_USED",
+			"CACHE3_SIZE",
+			"CACHE3_FREE",
+			"CACHE3_USED",
+			"SECURE_SUPPORTED_BOOT"
+		];
+		$diskInfo = $GLOBALS['disk_controller']->readinfo();
+		$ramInfo = $GLOBALS['static_memory_controller']->readinfo();
+		$CacheInfo0 = $GLOBALS['cache_controller_0']->readinfo();
+		$CacheInfo1 = $GLOBALS['cache_controller_1']->readinfo();
+		$CacheInfo2 = $GLOBALS['cache_controller_2']->readinfo();
+		$CacheInfo3 = $GLOBALS['cache_controller_3']->readinfo();
+		$svar_data =
+		[
+			CPU_NAME,
+			CPU_NAME_ALTERNATIVE,
+			CPU_ARCHITECTURE,
+			CPU_CODE_NAME,
+			CPU_CODE,
+			CPU_VERSION,
+			CPU_CODE_VERSION,
+			CPU_CREATOR,
+			CPU_CORE,
+			CPU_THREAD,
+			CPU_CACHE,
+			CPU_FREQUENCY,
+			'MNC-1.1.4',
+			'CSA-2.5 KVSC-1.1',
+			'VDK-1.1.5',
+			'VDK-RAM_ENGINE-1.2.5',
+			'VDK-CACHE_ENGINE-1.0.1',
+			$GLOBALS["vm"]["config"]['disk']['size'],
+			($diskInfo['FSP_SIZE']-$diskInfo['RFI_SIZE']-20-$diskInfo['UAD_SIZE']),
+			($diskInfo['ALD_SIZE']+$diskInfo['RFI_SIZE']+20+$diskInfo['UAD_SIZE']),
+			$GLOBALS["vm"]["config"]['RAM']['memory'],
+			($ramInfo['FSP_SIZE']-$ramInfo['RFI_SIZE']-20-$ramInfo['UAD_SIZE']),
+			($ramInfo['ALD_SIZE']+$ramInfo['RFI_SIZE']+20+$ramInfo['UAD_SIZE']),
+			CPU::read_sm_block("RUNNING_TASK"),
+			CPU::read_sm_block("CREATED_THREAD"),
+			CPU::read_sm_block("RUNNING_THREAD"),
+			$GLOBALS["vm"]["config"]['RAM']['cache_0'],
+			($CacheInfo0['FSP_SIZE']-$CacheInfo0['RFI_SIZE']-20-$CacheInfo0['UAD_SIZE']),
+			($CacheInfo0['ALD_SIZE']+$CacheInfo0['RFI_SIZE']+20+$CacheInfo0['UAD_SIZE']),
+			$GLOBALS["vm"]["config"]['RAM']['cache_1'],
+			($CacheInfo1['FSP_SIZE']-$CacheInfo1['RFI_SIZE']-20-$CacheInfo1['UAD_SIZE']),
+			($CacheInfo1['ALD_SIZE']+$CacheInfo1['RFI_SIZE']+20+$CacheInfo1['UAD_SIZE']),
+			$GLOBALS["vm"]["config"]['RAM']['cache_2'],
+			($CacheInfo2['FSP_SIZE']-$CacheInfo2['RFI_SIZE']-20-$CacheInfo2['UAD_SIZE']),
+			($CacheInfo2['ALD_SIZE']+$CacheInfo2['RFI_SIZE']+20+$CacheInfo2['UAD_SIZE']),
+			$GLOBALS["vm"]["config"]['RAM']['cache_3'],
+			($CacheInfo3['FSP_SIZE']-$CacheInfo3['RFI_SIZE']-20-$CacheInfo3['UAD_SIZE']),
+			($CacheInfo3['ALD_SIZE']+$CacheInfo3['RFI_SIZE']+20+$CacheInfo3['UAD_SIZE']),
+			"2.0"
+		];
+		foreach($svar_name as $svn)
+			$svar[] = "SYSV:$svn:";
+		$string = str_replace($svar, $svar_data, $string);
+		preg_match_all('/GV:(\w+):/', $string, $globals_value);
+		foreach($globals_value[1] as $gvName){
+			$data = CPU::read_sm_block($gvName);
+			$gvData = '';
+			if($data)
+				$gvData = $data;
+			$string = str_replace("GV:$gvName:", $gvData, $string);
+		}
+		return $string;
+	}
+	function get_file_contents($name){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		return $control->read_file($name);
+	}
+	function get_uad_contents(){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		return $control->read_uad_data();
+	}
+	function get_x_uad_contents(){
+		if(!file_exists("./dev/ASB")) { echo("FILE NOT EXISTS"); return ''; }
+		if(filesize("./dev/ASB") == 0){ echo("EMPTY FILE");	  return '';    }
+		if(filesize("./dev/ASB") < 64){ echo("FILE TOO SMALL");  return ''; }
+		return file_get_contents("./dev/ASB");
+	}
+	function MBRv2_contents(){
+		eval('class VDK_MBR extends VDK{
+			public function __construct($x, $y, $z){
+				parent::__construct($x, $y, $z);
+			}
+		}');
+		$VDK_MBR = new VDK_MBR("./dev/ASBv2", 16, 2048);
+		$read = $VDK_MBR->read_file("AllocatedSecureBoot");
+		if(!$read){ echo("CANNOT READ AllocatedSecureBoot"); return ''; }
+		return $read;
+	}
+	function put_uad_contents($data){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		return $control->write_uad_data($data);
+	}
+	function delete_file_contents($name){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		return $control->delete_file($name);
+	}
+	function put_file_contents($name, $data){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		return $control->create_file($name, $data);
+	}
+	function get_file_size($name){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		$data= $control->read_file_info($name);
+		if($data)
+			return $data['filesize'];
+		return -1;
+	}
+	function check_file_exists($name){
+		if(!isset($GLOBALS['disk_controller']))
+			return false;
+		$control = $GLOBALS['disk_controller'];
+		$data= $control->read_file_info($name);
+		if($data)
+			return true;
+		return false;
+	}
+	function eexit($code){
+		if($this->exit_) return;
+		echo "$code";
+		$this->exit_ = true;
+		$this->clear();
+	}
+	function _log_err($msg){
+		$err = $this->err;
+		$this->_error_log[] = $msg;
+		if($err)
+			echo($msg);
+	}
+	function get_err_log(){
+		return $this->_error_log;
+	}
+	function execute_code_line($i){
+		if(!$this->exit_) $GLOBALS["vm"]["code_log"] .= $i."\n";
+		$func = $this->func;
+		$data = $this->data();
+		$ln = $this->l;
+		$l = $this->l+1;
+		$err = $this->err;
+		$i = trim(str_replace(["\r","\n","\r\n"],'',$i));
+		if($this->exit_)
+			$this->clear();
+		else
+		if(substr($i,0,14) === "ENABLE_OS_MODE")
+			$GLOBALS["PROTECTED_MODE"] = true;
+		else
+		if(substr($i,0,3) === "SET"){
+			preg_match('/SET\s*(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = $this->replace_var(str_replace(["\\n","\\r\\n"],["\n","\r\n"],$o[2]));
+			else
+				$this->_log_err("\nMNC \"SET\" Syntax Error at line $l\n");
+		}
+		else
+		if((substr($i,0,4) === "PSET") && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/PSET\s*(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				$d = json_decode(file_get_contents(".protected-dataset"), true);
+				$d[$o[1]] = $this->replace_var(str_replace(["\\n","\\r\\n"],["\n","\r\n"],$o[2]));
+				file_put_contents(".protected-dataset", json_encode($d));
+			}else
+				$this->_log_err("\nMNC \"SET\" Syntax Error at line $l\n");
+		}
+		else
+		if((substr($i,0,4) === "PGET") && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/PGET\s*(\w+)\s*=\s*(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				$d = json_decode(file_get_contents(".protected-dataset"), true);
+				if(isset($d[$o[2]])) $data[$o[1]] = $d[$o[2]];
+			}else
+				$this->_log_err("\nMNC \"SET\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,11) === "GLOBALS_SET"){
+			preg_match('/GLOBALS_SET\s*(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				CPU::create_sm_block($o[1],$this->replace_var(str_replace(["\\n","\\r\\n"],["\n","\r\n"],$o[2])));
+			else
+				$this->_log_err("\nMNC \"GLOBALS_SET\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,11) === "GLOBALS_REM"){
+			preg_match('/GLOBALS_REM\s*(\w+)/', $i, $o);
+			if(isset($o[1]))
+				CPU::delete_sm_block($o[1]);
+			else
+				$this->_log_err("\nMNC \"GLOBALS_SET\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,7) === "ENA_ERR")
+			$this->err = true;
+		else
+		if(substr($i,0,7) === "DIS_ERR")
+			$this->err = false;
+		else
+		if(substr($i,0,5) === "CLEAR")
+			echo chr(27).chr(91).'H'.chr(27).chr(91).'J';
+		else
+		if(substr($i,0,3) === "MD5"){
+			preg_match('/MD5\s*(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = md5($this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"MD5\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "SHA1"){
+			preg_match('/SHA1\s*(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = sha1($this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"SHA1\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,11) === "CSA_ENCRYPT"){
+			preg_match('/CSA_ENCRYPT\s+"(.+)"\s+KEY\s+"(.+)"\s+VAR\s+(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]) && isset($o[3]))
+				$data[$o[3]] = CSA::encrypt($this->replace_var($o[1]), $this->replace_var($o[1]));
+			else
+				$this->_log_err("\nMNC \"CSA_ENCRYPT\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,11) === "CSA_DECRYPT"){
+			preg_match('/CSA_DECRYPT\s+"(.+)"\s+KEY\s+"(.+)"\s+VAR\s+(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]) && isset($o[3]))
+				$data[$o[3]] = CSA::decrypt($this->replace_var($o[1]), $this->replace_var($o[1]));
+			else
+				$this->_log_err("\nMNC \"CSA_DECRYPT\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,10) === "CSA_KEYGEN"){
+			preg_match('/CSA_KEYGEN\s+(\w+)\s+LENGTH\s+(\d+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = CSA::create_private_key($o[2]);
+			else
+				$this->_log_err("\nMNC \"CSA_KEYGEN\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,13) === "CSA_PUBKEYGEN"){
+			preg_match('/CSA_PUBKEYGEN\s+(\w+)\s+PRIKEY\s+(.+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = CSA::private_key_to_public_key($this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"CSA_PUBKEYGEN\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,8) === "CSA_HASH"){
+			preg_match('/CSA_HASH\s+(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = CSA::_hash($this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"CSA_HASH\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,6) === "SHA256"){
+			preg_match('/SHA1\s+(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = hash("sha256",$this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"SHA256\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,6) === "SHA512"){
+			preg_match('/SHA1\s+(\w+)\s*=\s*"(.*)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = hash("sha512",$this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"SHA512\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "B64E"){
+			preg_match('/B64E\s+(\w*)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($data[$o[1]]))
+					$data[$o[1]] = base64_encode($data[$o[1]]);
+			}else{
+				$this->_log_err("\nMNC \"B64E\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,4) === "B64D"){
+			preg_match('/B64D\s+(\w*)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($data[$o[1]]))
+					$data[$o[1]] = base64_decode($data[$o[1]]);
+			}else{
+				$this->_log_err("\nMNC \"B64D\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,11) === "JSON_ENCODE"){
+			preg_match('/JSON_ENCODE\s+(\w*)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($data[$o[1]]))
+					$data[$o[1]] = json_encode($data[$o[1]]);
+			}else{
+				$this->_log_err("\nMNC \"JSON_ENCODE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,11) === "JSON_DECODE"){
+			preg_match('/JSON_DECODE\s+(\w*)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($data[$o[1]]))
+					$data[$o[1]] = json_decode($data[$o[1]], true);
+			}else{
+				$this->_log_err("\nMNC \"JSON_DECODE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,9) === "CODE_EXEC"){
+			preg_match('/CODE_EXEC\s+(\w+)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($data[$o[1]]))
+					CPU::execute_code($data[$o[1]]);
+			}else{
+				$this->_log_err("\nMNC \"CODE_EXEC\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,4) === "CEXC" && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/CEXC\s+"(.+)"/', $i, $o);
+			if(isset($o[1]))
+				$this->execute_code_line($this->replace_var($o[1]));
+			else
+				$this->_log_err("\nMNC \"CODE_EXEC\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "RESF" && !$GLOBALS["PROTECTED_MODE"]){
+			$part = "./".$GLOBALS["vm"]["config"]['path']['disk_path'];
+			if(file_exists($part.'.BBAK'))
+				file_put_contents($part,file_get_contents($part.'.BBAK'));
+			else
+				$this->_log_err("\nBACKUP FILE NOT FOUND\n");
+		}
+		else
+		if(substr($i,0,4) === "BAKF" && !$GLOBALS["PROTECTED_MODE"]){
+			$part = "./".$GLOBALS["vm"]["config"]['path']['disk_path'];
+			if(file_exists($part))
+				file_put_contents($part.'.BBAK',file_get_contents($part));
+			else
+				$this->_log_err("\nDISK FILE NOT FOUND\n");
+		}
+		else
+		if(substr($i,0,9) === "READ_DMBR"){
+			preg_match('/READ_DMBR\s+(\w*)\s+\[(.+)\]\s+\[(.+)\]/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				$m = $this->replace_var($o[2]);
+				$v = $this->replace_var($o[3]);
+				if($m == "1"){
+					if($v == "2.0")
+						$data[$o[1]] = $this->MBRv2_contents();
+					else
+						$data[$o[1]] = $this->get_x_uad_contents();
+				}
+				else
+				{
+					$data[$o[1]] = $this->get_uad_contents();
+				}
+			}else{
+				$this->_log_err("\nMNC \"READ_DMBR\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,10) === "WRITE_DMBR"){
+			preg_match('/WRITE_DMBR\s+(.*)/', $i, $o);
+			if(isset($o[1]))
+				$this->put_uad_contents($this->replace_var($o[1]));
+			else
+				$this->_log_err("\nMNC \"WRITE_DMBR\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,3) === "INT"){
+			preg_match('/INT\s+(\w+)\s+=\s+([\d]+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = (int)$o[2];
+			else
+				$this->_log_err("\nMNC \"INT\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "EXIT"){
+			preg_match('/EXIT\s*(".*")/', $i, $o);
+			if(isset($o[1]))
+				$this->eexit($this->replace_var(substr($o[1],1,(strlen($o[1])-2))));
+			else
+				$this->eexit('');
+		}
+		else
+		if(substr($i,0,5) === "ARRAY"){
+			preg_match('/ARRAY\s(.+)\s+=\s+\[(.*)\]/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if($j = @json_decode('{'.$o[2].'}', true))
+					$data[$o[1]] = $j;
+				else
+					$this->_log_err("\nMNC \"ARRAY\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"ARRAY\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,4) === "BOOL"){
+			preg_match('/BOOL\s+(\w+)\s+=\s+(true|false|\d+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if($o[2] == "true")
+					$data[$o[1]] = true;
+				elseif($o[2] == "false")
+					$data[$o[1]] = false;
+				if(is_numeric($o[2])){
+					if($o[2] >= 0)
+						$data[$o[1]] = true;
+					else
+						$data[$o[1]] = false;
+				}
+			}else{
+				$this->_log_err("\nMNC \"BOOL\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,10) === "FILEDELETE"){
+			preg_match('/FILEDELETE\s+"(.*)"/', $i, $o);
+			if(isset($o[1])){
+				if($this->check_file_exists($o[1]))
+					$this->delete_file_contents($o[1]);
+			}else{
+				$this->_log_err("\nMNC \"FILEDELETE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,8) === "READLINE"){
+			preg_match('/READLINE\s+(\w+)\s*("(.*)")?/', $i, $o);
+			if(isset($o[1])){
+				if(isset($o[3])) $p = $o[3]; else $p = '';
+				if(!empty($o[1]))
+					$data[$o[1]] = readline($p);
+				else
+					readline();
+				//if(substr($data[$o[1]],0,3) == "EXC") $this->execute_code_line(substr($data[$o[1]],3,(strlen($data[$o[1]])-3)));
+			}else{
+				$this->_log_err("\nMNC \"READLINE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,9) === "FILEWRITE"){
+			preg_match('/FILEWRITE\s+"(.+)"\s+CONTENTS\s+"(.+)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1]))
+					$this->put_file_contents($o[1],$this->replace_var($o[2]));
+				else
+					$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,8) === "FILEREAD"){
+			preg_match('/FILEREAD\s+"(.+)"\s+VAR\s+(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1]))
+					$data[$o[2]] = $this->get_file_contents($this->replace_var($o[1]));
+				else
+					$this->_log_err("\nMNC \"FILEREAD\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"FILEREAD\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,6) === "NETGET"){
+			preg_match('/NETGET\s+"(.+)"\s+VAR\s+(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1])){
+					if(isset($GLOBALS['NETWORK_controller']))
+						$data[$o[2]] = $GLOBALS['NETWORK_controller']->GET($o[1]);
+					else
+						$this->_log_err("\nMNC \"NETGET\" ERROR : NETWORK DRIVER NOT FOUND $l\n");
+				}else{
+					$this->_log_err("\nMNC \"NETGET\" Syntax Error at line $l\n");
+				}
+			}else{
+				$this->_log_err("\nMNC \"NETGET\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,9) === "PARSE_ARG"){
+			preg_match('/PARSE_ARG\s+"(.+)"\s+VAR\s+(\w+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1])){
+					preg_match_all('/([-{1,2}|\/])(?<name>[a-zA-Z0-9]*)[ |:|"]*(?<value>[\w|.|?|=|&|+| |\/|\\]*)(?=[ |"]|$)/', $o[1], $op);
+					$xr = [];
+					for($i = 0; $i < count($op['name']); $i++){
+						if(empty($op["value"][$i]))
+							$xr[$i] = $op["name"][$i];
+						else
+						{
+							if(count(explode(' ', $op["value"][$i])) > 0)
+								$xr[$i] = "{$op["name"][$i]}=\"{$op["value"][$i]}\"";
+							else
+								$xr[$i] = "{$op["name"][$i]}={$op["value"][$i]}";
+						}
+					}
+					$data[$o[1]] = $xr;
+				}else{
+					$this->_log_err("\nMNC \"PARSE_ARG\" Syntax Error at line $l\n");
+				}
+			}else{
+				$this->_log_err("\nMNC \"PARSE_ARG\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,8) === "FILESIZE"){
+			preg_match('/FILESIZE\s+(\w+)\s+=\s+"(.+)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = $this->get_file_size($o[2]);
+			else
+				$this->_log_err("\nMNC \"FILESIZE\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,3) === "ORD"){
+			preg_match('/ORD\s+(\w+)\s+=\s+"(.)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = ord($o[2]);
+			else
+				$this->_log_err("\nMNC \"ORD\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,3) === "CHR"){
+			preg_match('/CHR\s+(\w+)\s+=\s+([\d\w\W]+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = chr($this->calculate($this->replace_var($o[2])));
+			else
+				$this->_log_err("\nMNC \"CHR\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "CALC"){
+			preg_match('/CALC\s+(\w*)\s*=\s*(.*)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = $this->calculate($this->replace_var($o[2]));
+			else
+				$this->_log_err("\nMNC \"CALC\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,7) === "CAL_SIN"){
+			preg_match('/CAL_SIN\s+(\w*)\s*=\s*(.*)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = sin($this->calculate($this->replace_var($o[2])));
+			else
+				$this->_log_err("\nMNC \"CAL_SIN\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,7) === "CAL_COS"){
+			preg_match('/CAL_COS\s+(\w*)\s*=\s*(.*)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = cos($this->calculate($this->replace_var($o[2])));
+			else
+				$this->_log_err("\nMNC \"CAL_COS\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,7) === "CAL_TAN"){
+			preg_match('/CAL_TAN\s+(\w*)\s*=\s*(.*)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$data[$o[1]] = tan($this->calculate($this->replace_var($o[2])));
+			else
+				$this->_log_err("\nMNC \"CAL_TAN\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,4) === "FUNC"){
+			preg_match('/FUNC\s(.+)\s+DO\s(.+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]))
+				$func[$o[1]] = $o[2];
+			else
+				$this->_log_err("\nMNC \"FUNC\" Syntax Error at line $l\n");
+		}
+		else
+		if(substr($i,0,9) === "EXEC_FUNC"){
+			preg_match('/EXEC_FUNC\s(.+)/', $i, $o);
+			if(isset($o[1])){
+				if(isset($func[$o[1]])){
+					$e = explode(";", $func[$o[1]]);
+					if(count($e) > 0)
+						foreach($e as $c) $this->execute_code_line($c);
+					else
+						$this->execute_code_line($func[$o[1]]);
+				}else{
+					echo "Function {$o[1]} not found at line $l";
+				}
+			}else{
+				$this->_log_err("\nMNC \"FUNC\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,2) === "IF"){
+			preg_match('/IF\s(.+)\s+(==|!=|\?empty|\?bool|\?isset|\?numeric|\?string|\?array|\?file_exists)\s*(.*)\s*THEN\s*(.+)/', $i, $o);
+			if(isset($o[1]) && isset($o[2]) && isset($o[3]) && isset($o[4])){
+				$e = false;
+				switch($o[2]){
+					case "==":
+						$e = (trim($this->replace_var($o[1])) == trim($this->replace_var($o[3])));
+						break;
+					case "!=":
+						$e = (trim($this->replace_var($o[1])) != trim($this->replace_var($o[3])));
+						break;
+					case "?empty":
+						$e = empty($this->replace_var($o[1]));
+						break;
+					case "?array":
+						$e = is_array($this->replace_var($o[1]));
+						break;
+					case "?numeric":
+						$e = is_numeric($this->replace_var($o[1]));
+						break;
+					case "?bool":
+						$e = $data[$o[1]];
+						break;
+					case "?file_exists":
+						$e = $this->check_file_exists($this->replace_var($o[1]));
+						break;
+					case "?string":
+						$e = is_string($this->replace_var($o[1]));
+						break;
+					case "?isset":
+						$this->isc = true;
+						if($this->replace_var($o[1]) != null) $e = true;
+						$this->isc = false;
+						break;
+				}
+				if($e) $this->execute_code_line($o[4]);
+			}else{
+				$this->_log_err("\nMNC \"IF...THEN\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,5) == "PRINT" or substr($i,0,4) == "ECHO"){
+			preg_match('/(PRINT|ECHO)\s"(.+)"/', $i, $o);
+			if(isset($o[2])){
+				if($o[1] == "PRINT")
+					print($this->replace_var($o[2]));
+				else
+					echo($this->replace_var($o[2]));
+			}else{
+				$this->_log_err("\nMNC \"PRINT/ECHO\" Syntax Error at line $l\n");
+			}
+		}
+		else
+			$this->_log_err("\nMNC Syntax Error at line $l\n");
+		$this->func = $func;
+		$this->data($data);
+		$this->l = $ln+1;
+		return;
+	}
+	
+	public function execute_code($line){
+		foreach ($line as $i){
+			if(substr($i,0,1) == "#")
+				$e = false;
+			elseif(substr($i,0,1) == "//")
+				$e = false;
+			else
+				$e = true;
+			if(substr($i,0,2) == "/*") $e = false;
+			if(substr($i,0,-2) == "*/" && !$e) $e = true;
+			if($e && !empty(trim($i))) $this->execute_code_line($i);
+		}
+	}
+}
+?>

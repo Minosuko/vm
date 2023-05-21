@@ -1,0 +1,204 @@
+<?php
+$cd = __DIR__;
+ini_set("memory_limit", "1024M");
+if(!function_exists("readline")) {
+    function readline($prompt = null){
+        if($prompt){
+            echo $prompt;
+        }
+        $fp = fopen("php://stdin","r");
+        $line = rtrim(fgets($fp, 8190));
+        return $line;
+    }
+}
+if(!file_exists(".protected-dataset")) file_put_contents(".protected-dataset",'{"_SECBOOT":"0"}');
+echo "Initz..." . PHP_EOL;
+$GLOBALS["vm"]["config"] = parse_ini_file("./config.ini",true);
+$GLOBALS["PROTECTED_MODE"] = false;
+$GLOBALS["vm"]["RW"] = '';
+$GLOBALS["vm"]["cache_log"] = '';
+$GLOBALS["vm"]["ram_log"] = '';
+$GLOBALS["vm"]["CSA_debug_log"] = '';
+$GLOBALS['vm']["RAM_R"] = 0;
+$GLOBALS['vm']["RAM_W"] = 0;
+$GLOBALS['vm']["RAM_D"] = 0;
+echo "Loading CPU..." . PHP_EOL;
+if(file_exists("./drv/cpu"))
+	include("./drv/cpu");
+else
+	exit("CPU not loaded.");
+echo "CPU Loaded." . PHP_EOL;
+echo "Loading RAM..." . PHP_EOL;
+if(file_exists("./drv/ram"))
+	include("./drv/ram");
+else
+	exit("RAM not loaded.");
+echo "RAM Loaded." . PHP_EOL;
+echo "Loading Disk..." . PHP_EOL;
+if(file_exists("./drv/disk"))
+	include("./drv/disk");
+else
+	exit("Disk not loaded.");
+echo "Disk Loaded." . PHP_EOL;
+echo "Loading Cache Controller..." . PHP_EOL;
+if(file_exists("./drv/cache_controller"))
+	include("./drv/cache_controller");
+else
+	exit("Cache Controller not loaded.");
+echo "Cache Controller Loaded." . PHP_EOL;
+echo "Initz Loader..." . PHP_EOL;
+echo "Test 1: ";
+if(class_exists("CPU"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+echo "Test 2: ";
+if(class_exists("MNC"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+echo "Test 3: ";
+if(class_exists("RAM"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+echo "Test 4: ";
+if(class_exists("VDK"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+echo "Test 5: ";
+if(class_exists("cache_controller"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+echo "Test 6: ";
+if(class_exists("CSA"))
+	echo "OK" . PHP_EOL;
+else
+	exit("Failed" . PHP_EOL);
+function feq_cal($feq){
+	$l = strlen($feq);
+	switch($l){
+		case 10:
+			$f = round(($feq / 1000000000), 2);
+			$e = "Ghz";
+			break;
+		case 7:
+			$f = round(($feq / 1000000), 2);
+			$e = "Mhz";
+			break;
+		case 7:
+			$f = round(($feq / 1000), 2);
+			$e = "Khz";
+			break;
+		default:
+			$f = $feq;
+			$e = "Hz";
+			break;
+	}
+	return "$f $e";
+}
+$GLOBALS['CPU_controller']              =  new CPU();
+$GLOBALS['static_memory_controller']    =  new RAM($GLOBALS["vm"]["config"]['path']['ram_path']);
+$GLOBALS['disk_controller']             =  new VDK($cd.$GLOBALS["vm"]["config"]['path']['disk_path']);
+class cache_controller_0 extends cache_controller{
+	public function __construct($i){
+		parent::__construct($i);
+	}
+}
+class cache_controller_1 extends cache_controller{
+	public function __construct($i){
+		parent::__construct($i);
+	}
+}
+class cache_controller_2 extends cache_controller{
+	public function __construct($i){
+		parent::__construct($i);
+	}
+}
+class cache_controller_3 extends cache_controller{
+	public function __construct($i){
+		parent::__construct($i);
+	}
+}
+$GLOBALS['cache_controller_0']          =  new cache_controller_0(0);
+$GLOBALS['cache_controller_1']          =  new cache_controller_1(1);
+$GLOBALS['cache_controller_2']          =  new cache_controller_2(2);
+$GLOBALS['cache_controller_3']          =  new cache_controller_3(3);
+$GLOBALS["MNC"]                         =  new MNC();
+$GLOBALS["CSA"]                         =  new CSA();
+echo "CPU              : " . CPU_NAME_ALTERNATIVE . ' (' . CPU_NAME . ')' . PHP_EOL;
+echo "CPU Architecture : " . CPU_ARCHITECTURE                             . PHP_EOL;
+echo "CPU CodeName     : " . CPU_CODE_NAME                                . PHP_EOL;
+echo "CPU Version      : " . CPU_VERSION                                  . PHP_EOL;
+echo "CPU Creator      : " . CPU_CREATOR                                  . PHP_EOL;
+echo "CPU Core         : " . CPU_CORE                                     . PHP_EOL;
+echo "CPU Thread       : " . CPU_THREAD                                   . PHP_EOL;
+echo "CPU Feq          : " . feq_cal(CPU_FREQUENCY)                       . PHP_EOL;
+CPU::create_sm_block("RUNNING_TASK", 0);
+CPU::create_sm_block("CREATED_THREAD", 0);
+CPU::create_sm_block("RUNNING_THREAD", 0);
+CPU::cache_write("_KEY", $GLOBALS["vm"]["config"]["CPU"]["key"], 0);
+$GLOBALS['static_memory_controller']->create();
+if(file_exists("./FIRMWARE"))
+{
+	echo("FOUND FIRMWARE!" . PHP_EOL);
+	echo("BACKUP DATA IN PROGESS..." . PHP_EOL);
+	$GLOBALS['disk_controller']->create();
+	echo("NEW DATA PREPARED!" . PHP_EOL);
+	echo("UPDATE DATA IN PROGRESS..." . PHP_EOL);
+	echo("LOADING FIRMWARE..." . PHP_EOL);
+	CPU::LOAD_BIOS("./FIRMWARE");
+	unlink("./FIRMWARE");
+	exit("FIRMWARE UPDATED." . PHP_EOL);
+}
+if(file_exists("./EXEC"))
+	CPU::LOAD_BIOS("./EXEC");
+if(!file_exists("./BIOS"))
+	exit("BIOS NOT FOUND." . PHP_EOL);
+CPU::LOAD_BIOS("./BIOS");
+if(isset($GLOBALS["vm"]["config"]["debug"])){
+	if(file_exists("debug"))
+	{
+		if(is_file("debug"))
+		{
+			unlink("debug");
+			mkdir("debug");
+		}
+	}
+	else
+	{
+		mkdir("debug");
+	}
+	$o0 = $GLOBALS['cache_controller_0']->_open_mem();
+	$o1 = $GLOBALS['cache_controller_1']->_open_mem();
+	$o2 = $GLOBALS['cache_controller_2']->_open_mem();
+	$o3 = $GLOBALS['cache_controller_3']->_open_mem();
+	$o4 = $GLOBALS['static_memory_controller']->_open_mem();
+	$o5 = $GLOBALS['disk_controller']->_open_mem();
+	fseek($o0,0);
+	fseek($o1,0);
+	fseek($o2,0);
+	fseek($o3,0);
+	fseek($o4,0);
+	fseek($o5,0);
+	file_put_contents('debug/cpu_code.log',            $GLOBALS["vm"]["code_log"]);
+	file_put_contents('debug/cpu_error_code.log',      $GLOBALS["vm"]["code_error_log"]);
+	file_put_contents('debug/csa_debug.log',           $GLOBALS["vm"]["CSA_debug_log"]);
+	file_put_contents('debug/ram.log',                 "R: {$GLOBALS['vm']["RAM_R"]}\nW: {$GLOBALS['vm']["RAM_W"]}\nD: {$GLOBALS['vm']["RAM_D"]}\n\n".$GLOBALS["vm"]["ram_log"]);
+	file_put_contents('debug/cache.log',               $GLOBALS["vm"]["cache_log"]);
+	file_put_contents('debug/cache_0.dump', fread($o0, $GLOBALS["vm"]["config"]["RAM"]["cache_0"]));
+	file_put_contents('debug/cache_1.dump', fread($o1, $GLOBALS["vm"]["config"]["RAM"]["cache_1"]));
+	file_put_contents('debug/cache_2.dump', fread($o2, $GLOBALS["vm"]["config"]["RAM"]["cache_2"]));
+	file_put_contents('debug/cache_3.dump', fread($o3, $GLOBALS["vm"]["config"]["RAM"]["cache_3"]));
+	file_put_contents('debug/ram.dump'    , fread($o4, $GLOBALS["vm"]["config"]["RAM"]["memory"]));
+	file_put_contents('debug/disk.dump'   , fread($o5, $GLOBALS["vm"]["config"]["disk"]["size"]));
+}
+$GLOBALS['cache_controller_0']->close();
+$GLOBALS['cache_controller_1']->close();
+$GLOBALS['cache_controller_2']->close();
+$GLOBALS['cache_controller_3']->close();
+$GLOBALS['static_memory_controller']->close();
+$GLOBALS['disk_controller']->close();
+?>

@@ -1,0 +1,361 @@
+<?php
+class VDK{
+	function __construct($path, $UAD_SIZE = -1, $MAX_SIZE = -1){
+		if(empty($path)) throw new Exception("Empty filename.");
+		if(!file_exists($path))
+			 file_put_contents($path,'');
+		$this->path = $path;
+		if($MAX_SIZE > 0)
+			$this->MAX_SIZE = $MAX_SIZE;
+		else
+			$this->MAX_SIZE = $GLOBALS["vm"]["config"]["disk"]["size"];
+		if($UAD_SIZE > 0)
+			$this->UAD_SIZE = $UAD_SIZE;
+		else
+			$this->UAD_SIZE = $GLOBALS["vm"]["config"]["disk"]["boot_record"];
+		$this->open_memory = fopen($path, 'rw+');
+		if(!$this->check_file())
+			 $this->create($path);
+	}
+	function close(){
+		fclose($this->open_memory);
+	}
+	function _open_mem(){
+		return $this->open_memory;
+	}
+	function check_file(){
+		fseek($this->open_memory, 0);
+		$open = $this->open_memory;
+		$vdk_size = unpack('i', fread($open,4));
+		$rfi_size = unpack('i', fread($open,4));
+		$ald_size = unpack('i', fread($open,4));
+		$fsp_size = unpack('i', fread($open,4));
+		$uad_size = unpack('i', fread($open,4));
+		
+		if
+		(
+			isset($vdk_size[1]) &&
+			isset($rfi_size[1]) &&
+			isset($ald_size[1]) &&
+			isset($fsp_size[1]) &&
+			isset($uad_size[1])
+		)
+			return true;
+		
+		return false;
+	}
+	function create($size = '', $uad_size = ''){
+		if(empty($size) or !is_numeric($size))
+			$fsp_max_size = $this->MAX_SIZE;
+		if(empty($uad_size) or !is_numeric($uad_size))
+			$uad_max_size = $this->UAD_SIZE;
+		$data = '';
+		
+		$jdata = json_encode([]);
+		
+		$vdk_size = pack('i', $fsp_max_size);
+		$rfi_size = pack('i', strlen($jdata));
+		$ald_size = pack('i', 0);
+		$fsp_size = pack('i', ($fsp_max_size - (20 + $uad_max_size)));
+		$uad_size = pack('i', $uad_max_size);
+		
+		$data .= $vdk_size;
+		$data .= $rfi_size;
+		$data .= $ald_size;
+		$data .= $fsp_size;
+		$data .= $uad_size;
+		
+		$data .= $jdata;
+		$data .= str_repeat(chr(0), $uad_max_size); // 512 b un-allocate
+		
+		$open = $this->open_memory;
+		fseek($open, 0);
+		fwrite($open, $data);
+		
+		return true;
+	}
+	
+	function readinfo(){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		$vdk_size = unpack('i', fread($open,4))[1];
+		$rfi_size = unpack('i', fread($open,4))[1];
+		$ald_size = unpack('i', fread($open,4))[1];
+		$fsp_size = unpack('i', fread($open,4))[1];
+		$uad_size = unpack('i', fread($open,4))[1];
+		$raw_json_data = fread($open, $rfi_size);
+		$raw_uad_data = fread($open, $uad_size);
+		if($ald_size > 0)
+			$allocated_data = fread($open, $ald_size);
+		else
+			$allocated_data = '';
+		
+		$ouh_data = md5(str_repeat(chr(0), $uad_size));
+		$uad_md5_hash = md5($raw_uad_data);
+		$ald_md5_hash = md5($allocated_data);
+		$rfi_md5_hash = md5($raw_json_data);
+		if(file_exists($this->path))
+			$vdk_hash = md5_file($this->path);
+		else
+			$vdk_hash = null;
+		if($ouh_data == $uad_md5_hash)
+			$uad_writeable = 1;
+		else
+			$uad_writeable = 0;
+		return [
+			"VDK_HASH"      => $vdk_hash,
+			"VDK_SIZE"      => $vdk_size,
+			"RFI_SIZE"      => $rfi_size,
+			"ALD_SIZE"      => $ald_size,
+			"FSP_SIZE"      => $fsp_size,
+			"UAD_SIZE"      => $uad_size,
+			"RFI_MD5_HASH"  => $rfi_md5_hash,
+			"ALD_MD5_HASH"  => $ald_md5_hash,
+			"UAD_MD5_HASH"  => $uad_md5_hash,
+			"OUH_DATA"      => $ouh_data,
+			"UAD_WRITEABLE" => $uad_writeable
+		];
+	}
+	
+	
+	function create_file($filename, $fdata, $perm = 222){
+		if($this->read_file_info($filename)) $this->delete_file($filename);
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		$vdk_size = unpack('i', fread($open,4))[1];
+		$rfi_size = unpack('i', fread($open,4))[1];
+		$ald_size = unpack('i', fread($open,4))[1];
+		$fsp_size = unpack('i', fread($open,4))[1];
+		$uad_size = unpack('i', fread($open,4))[1];
+		
+		if(strlen($fdata) > $fsp_size)
+			return false;
+		
+		$raw_json_data = fread($open, $rfi_size);
+		$raw_uad_data = fread($open, $uad_size);
+		if($ald_size > 0)
+			$allocated_data = fread($open, $ald_size);
+		else
+			$allocated_data = '';
+		
+		$json_data = @json_decode($raw_json_data, true);
+		if(isset($json_data)){
+			/*
+			222 = full perm
+			221 = read only
+			220 = system only
+			210 = BIOS/FIRMWARE/EXEC Only
+			200 = hidden (read-only)
+			100 = hidden (full perm)
+			*/
+			$json_data[] = [$filename, $ald_size, strlen($fdata), time(), $perm];
+			
+			$data = '';
+			$n_raw_json_data = json_encode($json_data);
+			fseek($open, 0);
+			
+			$n_vdk_size = pack('i', $vdk_size);
+			$n_rfi_size = pack('i', strlen($n_raw_json_data));
+			$n_ald_size = pack('i', ($ald_size + strlen($fdata)));
+			$n_fsp_size = pack('i', ($fsp_size - strlen($fdata)));
+			$n_uad_size = pack('i', $uad_size);
+			
+			$data .= $n_vdk_size;
+			$data .= $n_rfi_size;
+			$data .= $n_ald_size;
+			$data .= $n_fsp_size;
+			$data .= $n_uad_size;
+			
+			
+			$data .= $n_raw_json_data;
+			$data .= $raw_uad_data;
+			
+			$data .= $allocated_data . $fdata;
+			
+			fwrite($open, $data);
+			return true;
+		}else{
+			return false;
+		}
+	}
+	
+	function delete_file($filename){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		$vdk_size = unpack('i', fread($open,4))[1];
+		$rfi_size = unpack('i', fread($open,4))[1];
+		$ald_size = unpack('i', fread($open,4))[1];
+		$fsp_size = unpack('i', fread($open,4))[1];
+		$uad_size = unpack('i', fread($open,4))[1];
+		
+		$raw_json_data = fread($open, $rfi_size);
+		$raw_uad_data = fread($open, $uad_size);
+		
+		$json_data = @json_decode($raw_json_data, true);
+		if(isset($json_data)){
+			$n_json_data = [];
+			$n = 0;
+			$allocated_data_2 = '';
+			foreach($json_data as $find){
+				if($find[0] == $filename){
+					if(in_array($find[5],[221, 220, 210, 200]))
+						return;
+					$n = $find[2];
+				}else{
+					fseek($open, (20+$find[1]+$rfi_size+$uad_size));
+					if($find[2] > 0)
+						$allocated_data_2 .= fread($open, $find[2]);
+					$n_json_data[] = [$find[0],($find[1]-$n),$find[2],$find[3],$find[4]];
+				}
+			}
+			$data = '';
+			$n_raw_json_data = json_encode($n_json_data);
+			fseek($open, 0);
+			
+			$n_vdk_size = pack('i', $vdk_size);
+			$n_rfi_size = pack('i', strlen($n_raw_json_data));
+			$n_ald_size = pack('i', ($ald_size - $n));
+			$n_fsp_size = pack('i', ($fsp_size + $n));
+			$n_uad_size = pack('i', $uad_size);
+			
+			$data .= $n_vdk_size;
+			$data .= $n_rfi_size;
+			$data .= $n_ald_size;
+			$data .= $n_fsp_size;
+			$data .= $n_uad_size;
+			
+			
+			$data .= $n_raw_json_data;
+			$data .= $raw_uad_data;
+			
+			$data .= $allocated_data_2;
+			
+			fwrite($open, $data);
+			return true;
+		}else{
+			return false;
+		}
+	}
+	
+	function write_uad_data($fdata){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		$vdk_size = unpack('i', fread($open,4))[1];
+		$rfi_size = unpack('i', fread($open,4))[1];
+		$ald_size = unpack('i', fread($open,4))[1];
+		$fsp_size = unpack('i', fread($open,4))[1];
+		$uad_size = unpack('i', fread($open,4))[1];
+		
+		if(strlen($fdata) > $uad_size){
+			
+			return false;
+		}
+		
+		$raw_json_data = fread($open, $rfi_size);
+		$raw_uad_data = fread($open, $uad_size);
+		if(md5($raw_uad_data) != md5(str_repeat(chr(0), $uad_size))){
+			
+			return false;
+		}
+		if($ald_size > 0)
+			$allocated_data = fread($open, $ald_size);
+		else
+			$allocated_data = '';
+		
+		
+		$json_data = @json_decode($raw_json_data, true);
+		if(isset($json_data)){
+			$data = '';
+			$uad_data = $fdata;
+			if(strlen($fdata) < $uad_size){
+				$uad_data .= str_repeat(chr(0), ($uad_size - strlen($fdata)));
+			}
+			
+			$n_raw_json_data = json_encode($json_data);
+			fseek($open, 0);
+			
+			$n_vdk_size = pack('i', $vdk_size);
+			$n_rfi_size = pack('i', strlen($n_raw_json_data));
+			$n_ald_size = pack('i', $ald_size);
+			$n_fsp_size = pack('i', $fsp_size);
+			$n_uad_size = pack('i', $uad_size);
+			
+			$data .= $n_vdk_size;
+			$data .= $n_rfi_size;
+			$data .= $n_ald_size;
+			$data .= $n_fsp_size;
+			$data .= $n_uad_size;
+			
+			
+			$data .= $n_raw_json_data;
+			$data .= $uad_data;
+			
+			$data .= $allocated_data;
+			
+			fwrite($open, $data);
+			
+			return true;
+		}else{
+			return false;
+		}
+	}
+	function read_file($filename){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		fseek($open,4);
+		$rfi_size = unpack('i', fread($open,4))[1];
+		fseek($open,16);
+		$uad_size = unpack('i', fread($open,4))[1];
+		
+		$raw_json_data = fread($open, $rfi_size);
+		
+		$json_data = @json_decode($raw_json_data, true);
+		if(isset($json_data)){
+			$e = 0;
+			foreach($json_data as $file_to_find){
+				if($file_to_find[0] == $filename){
+					$e = 1;
+					$d = $file_to_find;
+				}
+			}
+			if($e == 1){
+				fseek($open, (20+$d[1]+$rfi_size+$uad_size));
+				$data = fread($open, $d[2]);
+			}else{
+				$data = false;
+			}
+		}else{
+			$data = false;
+		}
+		
+		return $data;
+	}
+	function read_file_info($filename){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		fseek($open,4);
+		$rfi_size = unpack('i', fread($open,4))[1];
+		fseek($open,20);
+		$raw_json_data = fread($open, $rfi_size);
+		
+		
+		$json_data = @json_decode($raw_json_data, true);
+		if(isset($json_data))
+			foreach($json_data as $file_to_find)
+				if($file_to_find[0] == $filename)
+					return ["filename" => $file_to_find[0],"data_offset" => $file_to_find[1], "filesize" => $file_to_find[2], "timestamp" => $file_to_find[3], "permission" => $file_to_find[4]];
+		return false;
+	}
+	function read_uad_data(){
+		rewind($this->open_memory);
+		$open = $this->open_memory;
+		fseek($open,4);
+		$rfi_size = unpack('i', fread($open,4))[1];
+		fseek($open, 16);
+		$uad_size = unpack('i', fread($open,4))[1];
+		fseek($open,(20+$rfi_size));
+		$raw_uad_data = fread($open, $uad_size);
+		return $raw_uad_data;
+	}
+}
+?>

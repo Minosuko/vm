@@ -1,0 +1,14 @@
+Cache controller             : DONE
+CPU controller               : DONE
+RAM controller               : DONE
+RAM encrypt/decrypt          : DONE
+RAM file/in-memory type      : DONE
+Config Controller            : DONE
+VM controller                : DONE
+VDisk controller             : DONE
+File system                  : Only-file (50%)
+BIOS (MAKE WITH MNC)         : DONE
+BIOS 2.0                     : DONE
+BIOS SECURE BOOT             : DONE
+BIOS SECURE BOOT 2.0         : DONE
+CUSTOM SECURE BOOT           : DONE
