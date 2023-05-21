@@ -1,0 +1,13 @@
+/* BIOS CODE */
+# START
+SET line = "\n"
+SET empty_dmbr = "bf619eac0cdf3f68d496ea9344137e8b"
+ECHO "BIOS LOADING...VAR:line:"
+READ_DMBR dmbr
+FUNC check_dmbr DO MD5 md5_dmbr = "VAR:dmdr:VAR:line:";IF VAR:md5_dmbr: == VAR:empty_dmbr: THEN EXIT "Disk Master Boot Record empty."
+FUNC _MAIN DO EXEC_FUNC check_dmbr;CODE_EXEC dmbr
+ECHO "BIOS LOADED.VAR:line:"
+EXEC_FUNC _MAIN
+ECHO "BIOS EXIT.VAR:line:"
+EXIT
+# END

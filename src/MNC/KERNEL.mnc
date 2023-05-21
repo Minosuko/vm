@@ -1,0 +1,12 @@
+SET line = "\n"
+SET exit_text = "exit"
+SET _32_BITMODE = "32 BIT"
+SET _64_BITMODE = "64 BIT"
+ECHO "KERNEL LOADED.VAR:line:"
+IF GV:_BOOTLOADER_ARCH_BITMODE: == VAR:_32_BITMODE: THEN ECHO "System booted as 32 bit protected mode.VAR:line:"
+IF GV:_BOOTLOADER_ARCH_BITMODE: == VAR:_64_BITMODE: THEN ECHO "System booted as 64 bit protected mode.VAR:line:"
+FUNC a DO EXEC_FUNC b
+FUNC b DO READLINE input "> ";SET input_2 = "BIN::VAR:input:";GLOBALS_SET _KERNEL_COMMAND_INPUT = "VAR:input:";EXEC_FUNC c;EXEC_FUNC a
+FUNC c DO IF VAR:input_2: ?file_exists THEN EXEC_FUNC execute_file;IF VAR:input: == VAR:exit_text: THEN EXIT "SYSTEM_SHUTDOWN.VAR:line:"
+FUNC execute_file DO FILEREAD "VAR:input_2:" VAR _KERNEL_CODE_LOADED;CODE_EXEC _KERNEL_CODE_LOADED
+EXEC_FUNC a
