@@ -565,8 +565,6 @@ class MNC{
 		$this->func = [];
 		$this->data(null);
 		$this->l = 1;
-		$this->err = true;
-		$this->_error_log = [];
 		$this->isc = false;
 		CPU::delete_sm_block($task);
 	}
@@ -768,12 +766,7 @@ class MNC{
 		return file_get_contents("./dev/ASB");
 	}
 	function MBRv2_contents(){
-		eval('class VDK_MBR extends VDK{
-			public function __construct($x, $y, $z){
-				parent::__construct($x, $y, $z);
-			}
-		}');
-		$VDK_MBR = new VDK_MBR("./dev/ASBv2", 16, 2048);
+		$VDK_MBR = $GLOBALS["vm"]["VDK_MBR"];
 		$read = $VDK_MBR->read_file("AllocatedSecureBoot");
 		if(!$read){ echo("CANNOT READ AllocatedSecureBoot"); return ''; }
 		return $read;
