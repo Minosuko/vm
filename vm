@@ -102,6 +102,7 @@ function feq_cal($feq){
 $GLOBALS['CPU_controller']              =  new CPU();
 $GLOBALS['static_memory_controller']    =  new RAM($GLOBALS["vm"]["config"]['path']['ram_path']);
 $GLOBALS['disk_controller']             =  new VDK($cd.$GLOBALS["vm"]["config"]['path']['disk_path']);
+$GLOBALS["vm"]["VDK_MBR"]               =  new VDK_MBR($cd.$GLOBALS["vm"]["config"]['path']['ASB_dpath'], 16, 2048);
 class cache_controller_0 extends cache_controller{
 	public function __construct($i){
 		parent::__construct($i);
@@ -133,7 +134,6 @@ $GLOBALS['cache_controller_2']          =  new cache_controller_2(2);
 $GLOBALS['cache_controller_3']          =  new cache_controller_3(3);
 $GLOBALS["MNC"]                         =  new MNC();
 $GLOBALS["CSA"]                         =  new CSA();
-$GLOBALS["vm"]["VDK_MBR"]               =  new VDK_MBR("./dev/ASBv2", 16, 2048);
 echo "CPU              : " . CPU_NAME_ALTERNATIVE . ' (' . CPU_NAME . ')' . PHP_EOL;
 echo "CPU Architecture : " . CPU_ARCHITECTURE                             . PHP_EOL;
 echo "CPU CodeName     : " . CPU_CODE_NAME                                . PHP_EOL;
