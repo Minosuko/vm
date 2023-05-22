@@ -122,12 +122,18 @@ class cache_controller_3 extends cache_controller{
 		parent::__construct($i);
 	}
 }
+class VDK_MBR extends VDK{
+	public function __construct($x, $y, $z){
+		parent::__construct($x, $y, $z);
+	}
+}
 $GLOBALS['cache_controller_0']          =  new cache_controller_0(0);
 $GLOBALS['cache_controller_1']          =  new cache_controller_1(1);
 $GLOBALS['cache_controller_2']          =  new cache_controller_2(2);
 $GLOBALS['cache_controller_3']          =  new cache_controller_3(3);
 $GLOBALS["MNC"]                         =  new MNC();
 $GLOBALS["CSA"]                         =  new CSA();
+$GLOBALS["vm"]["VDK_MBR"]               =  new VDK_MBR("./dev/ASBv2", 16, 2048);
 echo "CPU              : " . CPU_NAME_ALTERNATIVE . ' (' . CPU_NAME . ')' . PHP_EOL;
 echo "CPU Architecture : " . CPU_ARCHITECTURE                             . PHP_EOL;
 echo "CPU CodeName     : " . CPU_CODE_NAME                                . PHP_EOL;
