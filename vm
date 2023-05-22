@@ -102,7 +102,6 @@ function feq_cal($feq){
 $GLOBALS['CPU_controller']              =  new CPU();
 $GLOBALS['static_memory_controller']    =  new RAM($GLOBALS["vm"]["config"]['path']['ram_path']);
 $GLOBALS['disk_controller']             =  new VDK($cd.$GLOBALS["vm"]["config"]['path']['disk_path']);
-$GLOBALS["vm"]["VDK_MBR"]               =  new VDK_MBR($cd.$GLOBALS["vm"]["config"]['path']['ASB_dpath'], 16, 2048);
 class cache_controller_0 extends cache_controller{
 	public function __construct($i){
 		parent::__construct($i);
@@ -128,6 +127,7 @@ class VDK_MBR extends VDK{
 		parent::__construct($x, $y, $z);
 	}
 }
+$GLOBALS["vm"]["VDK_MBR"]               =  new VDK_MBR($cd.$GLOBALS["vm"]["config"]['path']['ASB_dpath'], 16, 2048);
 $GLOBALS['cache_controller_0']          =  new cache_controller_0(0);
 $GLOBALS['cache_controller_1']          =  new cache_controller_1(1);
 $GLOBALS['cache_controller_2']          =  new cache_controller_2(2);
