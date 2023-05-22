@@ -1299,6 +1299,9 @@ class MNC{
 					case "?numeric":
 						$e = is_numeric($this->replace_var($o[1]));
 						break;
+					case "?is_bool":
+						$e = is_bool($data[$o[1]]);
+						break;
 					case "?bool":
 						$e = $data[$o[1]];
 						break;
