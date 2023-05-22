@@ -1,6 +1,7 @@
 <?php
 # Key Verify Secure Crypto
 # Based RSA but diff method
+# Free to use
 class KVSC{
 	private function check_prime($num){
 		if($num == 0 || $num == 1)
