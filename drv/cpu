@@ -760,9 +760,10 @@ class MNC{
 		return $control->read_uad_data();
 	}
 	function get_x_uad_contents(){
-		if(!file_exists("./dev/ASB")) { echo("FILE NOT EXISTS"); return ''; }
-		if(filesize("./dev/ASB") == 0){ echo("EMPTY FILE");	  return '';    }
-		if(filesize("./dev/ASB") < 64){ echo("FILE TOO SMALL");  return ''; }
+		$path = "./{$GLOBALS["vm"]["config"]['path']['ASB_path']}";
+		if(!file_exists($path)) { echo("FILE NOT EXISTS"); return ''; }
+		if(filesize($path) == 0){ echo("EMPTY FILE");	  return '';    }
+		if(filesize($path) < 64){ echo("FILE TOO SMALL");  return ''; }
 		return file_get_contents("./dev/ASB");
 	}
 	function MBRv2_contents(){
