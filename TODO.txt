@@ -1,7 +1,7 @@
 Cache controller             : DONE
 CPU controller               : DONE
 RAM controller               : DONE
-RAM encrypt/decrypt          : DONE
+RAM encrypt/decrypt          : REMOVED/DISABLED
 RAM file/in-memory type      : DONE
 Config Controller            : DONE
 VM controller                : DONE
@@ -12,3 +12,5 @@ BIOS 2.0                     : DONE
 BIOS SECURE BOOT             : DONE
 BIOS SECURE BOOT 2.0         : DONE
 CUSTOM SECURE BOOT           : DONE
+DEBUG LOGGER SYSTEM          : 50%
+Crypto system                : 80%
