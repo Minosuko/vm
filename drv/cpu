@@ -745,13 +745,18 @@ class MNC{
 				$gvData = $data;
 			$string = str_replace("GV:$gvName:", $gvData, $string);
 		}
+		$string = str_replace('$line$', PHP_EOL, $string);
 		return $string;
 	}
 	function get_file_contents($name){
 		if(!isset($GLOBALS['disk_controller']))
 			return false;
 		$control = $GLOBALS['disk_controller'];
-		return $control->read_file($name);
+		$info = $control->read_file_info($name);
+		if($info['permission'] == 222 or $info['permission'] == 100 or $info['permission'] == 221 or $info['permission'] == 200 or $info['permission'] == 220)
+			return $control->read_file($name);
+		else
+			return false;
 	}
 	function get_uad_contents(){
 		if(!isset($GLOBALS['disk_controller']))
@@ -760,10 +765,9 @@ class MNC{
 		return $control->read_uad_data();
 	}
 	function get_x_uad_contents(){
-		$path = "./{$GLOBALS["vm"]["config"]['path']['ASB_path']}";
-		if(!file_exists($path)) { echo("FILE NOT EXISTS"); return ''; }
-		if(filesize($path) == 0){ echo("EMPTY FILE");	  return '';    }
-		if(filesize($path) < 64){ echo("FILE TOO SMALL");  return ''; }
+		if(!file_exists("./dev/ASB")) { echo("FILE NOT EXISTS"); return ''; }
+		if(filesize("./dev/ASB") == 0){ echo("EMPTY FILE");	  return '';    }
+		if(filesize("./dev/ASB") < 64){ echo("FILE TOO SMALL");  return ''; }
 		return file_get_contents("./dev/ASB");
 	}
 	function MBRv2_contents(){
@@ -782,13 +786,41 @@ class MNC{
 		if(!isset($GLOBALS['disk_controller']))
 			return false;
 		$control = $GLOBALS['disk_controller'];
-		return $control->delete_file($name);
+		$info = $control->read_file_info($name);
+		if(!$GLOBALS['PROTECTED_MODE'])
+			return $control->delete_file($name);
+		if($info['permission'] == 222 or $info['permission'] == 100)
+			return $control->delete_file($name);
+		else
+			return false;
 	}
-	function put_file_contents($name, $data){
+	function put_file_contents($name, $data, $p = 0){
 		if(!isset($GLOBALS['disk_controller']))
 			return false;
 		$control = $GLOBALS['disk_controller'];
-		return $control->create_file($name, $data);
+		$info = $control->read_file_info($name);
+		switch($p){
+			case 0:
+				$prm = 222;
+				break;
+			case 1:
+				$prm = 220;
+				break;
+			case 2:
+				$prm = 221;
+				break;
+			default:
+				$prm = 210;
+				break;
+		}
+		if(!$GLOBALS['PROTECTED_MODE'])
+			return $control->create_file($name, $data, $prm);
+		if($this->check_file_exists($name))
+			return $control->create_file($name, $data);
+		if($info['permission'] == 222 or $info['permission'] == 100)
+			return $control->create_file($name, $data, $info['permission']);
+		else
+			return false;
 	}
 	function get_file_size($name){
 		if(!isset($GLOBALS['disk_controller']))
@@ -1138,6 +1170,42 @@ class MNC{
 			if(isset($o[1]) && isset($o[2])){
 				if(!empty($o[1]))
 					$this->put_file_contents($o[1],$this->replace_var($o[2]));
+				else
+					$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,12) === "SYSFILEWRITE" && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/SYSFILEWRITE\s+"(.+)"\s+CONTENTS\s+"(.+)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1]))
+					$this->put_file_contents($o[1],$this->replace_var($o[2]), 1);
+				else
+					$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,12) === "NORFILEWRITE" && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/NORFILEWRITE\s+"(.+)"\s+CONTENTS\s+"(.+)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1]))
+					$this->put_file_contents($o[1],$this->replace_var($o[2]), 0);
+				else
+					$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}else{
+				$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
+			}
+		}
+		else
+		if(substr($i,0,11) === "ROFILEWRITE" && !$GLOBALS["PROTECTED_MODE"]){
+			preg_match('/ROFILEWRITE\s+"(.+)"\s+CONTENTS\s+"(.+)"/', $i, $o);
+			if(isset($o[1]) && isset($o[2])){
+				if(!empty($o[1]))
+					$this->put_file_contents($o[1],$this->replace_var($o[2]), 2);
 				else
 					$this->_log_err("\nMNC \"FILEWRITE\" Syntax Error at line $l\n");
 			}else{
