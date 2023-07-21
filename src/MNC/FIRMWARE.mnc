@@ -27,7 +27,7 @@ B64D BOOTMGR
 
 ECHO "Writting Boot Manager to disk...VAR:line:"
 # Write to file on disk
-FILEWRITE "BOOTMGR" CONTENTS "VAR:BOOTMGR:"
+SYSFILEWRITE "BOOTMGR" CONTENTS "VAR:BOOTMGR:"
 
 
 # Boot Manager
@@ -39,7 +39,7 @@ B64D KERNEL
 
 ECHO "Writting KERNEL to disk...VAR:line:"
 # Write to file on disk
-FILEWRITE "KERNEL" CONTENTS "VAR:KERNEL:"
+SYSFILEWRITE "KERNEL" CONTENTS "VAR:KERNEL:"
 
 /* EXEC */
 # Base64 encoded
@@ -50,4 +50,4 @@ B64D EXEC
 
 ECHO "Writting BIN::DUMP to disk...VAR:line:"
 # Write to file on disk
-FILEWRITE "BIN::DUMP" CONTENTS "VAR:EXEC:"
+NORFILEWRITE "BIN::DUMP" CONTENTS "VAR:EXEC:"
