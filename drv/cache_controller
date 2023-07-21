@@ -16,6 +16,44 @@ class cache_controller{
 		$this->open_memory = fopen($path, 'rw+');
 		$this->create($path);
 	}
+	function RFI_decode($input){
+		$result = [];
+		$size = ord($input[0]);
+		$offset = 1;
+		for($i = 0; $i < $size; $i++){
+			$varCount = ord($input[$offset]);
+			$varSize = [];
+			$varData = [];
+			$off = 0;
+			for($x = 0; $x < $varCount; $x++)
+				$varSize[] = ord($input[$offset + $x + 1]);
+			for($d = 0; $d < $varCount; $d++){
+				if($d != 0)
+					$off += $varSize[$d - 1];
+				$varData[] = substr($input, ($offset+1+$varCount+$off), $varSize[$d]);
+			}
+			$offset += 1 + $varCount;
+			for($o = 0; $o < $varCount; $o++)
+				$offset += $varSize[$o];
+			$result[] = $varData;
+		}
+		return $result;
+	}
+
+	function RFI_encode($input) {
+		$result = chr(count($input));
+		foreach($input as $data){
+			$VarCount = chr(count($data));
+			$VarSize = '';
+			$VarData = '';
+			foreach($data as $var){
+				$VarSize .= chr(strlen($var));
+				$VarData .= $var;
+			}
+			$result .= $VarCount.$VarSize.$VarData;
+		}
+		return $result;
+	}
 	function close(){
 		fclose($this->open_memory);
 	}
@@ -53,7 +91,7 @@ class cache_controller{
 		}
 		$data = '';
 		
-		$jdata = json_encode([]);
+		$jdata = $this->RFI_encode([]);
 		
 		$vdk_size = pack('i', $fsp_max_size);
 		$rfi_size = pack('i', strlen($jdata));
@@ -141,12 +179,12 @@ class cache_controller{
 		
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_json_data, true);
 		if(isset($json_data)){
 			$json_data[] = [$filename, $ald_size, strlen($fdata)];
 			
 			$data = '';
-			$n_raw_json_data = json_encode($json_data);
+			$n_raw_json_data = $this->RFI_encode($json_data);
 			$open = $this->open_memory;
 			fseek($open, 0);
 			
@@ -189,7 +227,7 @@ class cache_controller{
 		$raw_uad_data = fread($open, $uad_size);
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_json_data, true);
 		if(isset($json_data)){
 			$n_json_data = [];
 			$n = 0;
@@ -205,7 +243,7 @@ class cache_controller{
 			}
 			
 			$data = '';
-			$n_raw_json_data = json_encode($n_json_data);
+			$n_raw_json_data = $this->RFI_encode($n_json_data);
 			$open = $this->open_memory;
 			fseek($open, 0);
 			
@@ -261,7 +299,7 @@ class cache_controller{
 			$allocated_data = '';
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_json_data, true);
 		if(isset($json_data)){
 			$data = '';
 			$uad_data = $fdata;
@@ -269,7 +307,7 @@ class cache_controller{
 				$uad_data .= str_repeat(chr(0), ($uad_size - strlen($fdata)));
 			}
 			
-			$n_raw_json_data = json_encode($json_data);
+			$n_raw_json_data = $this->RFI_encode($json_data);
 			$open = $this->open_memory;
 			fseek($open, 0);
 			
@@ -308,7 +346,7 @@ class cache_controller{
 		
 		$raw_json_data = fread($open, $rfi_size);
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_json_data, true);
 		if(isset($json_data)){
 			$e = 0;
 			foreach($json_data as $file_to_find){
@@ -338,7 +376,7 @@ class cache_controller{
 		$raw_json_data = fread($open, $rfi_size);
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_json_data, true);
 		if(isset($json_data))
 			foreach($json_data as $file_to_find)
 				if($file_to_find[0] == $filename)
