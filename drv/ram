@@ -15,6 +15,45 @@ class RAM{
 		$this->open_memory = fopen($path, 'rw+');
 		$this->create($path);
 	}
+	function RFI_decode($input){
+		$result = [];
+		$size = ord($input[0]);
+		$offset = 1;
+		for($i = 0; $i < $size; $i++){
+			$varCount = ord($input[$offset]);
+			$varSize = [];
+			$varData = [];
+			$off = 0;
+			for($x = 0; $x < $varCount; $x++)
+				$varSize[] = ord($input[$offset + $x + 1]);
+			for($d = 0; $d < $varCount; $d++){
+				if($d != 0)
+					$off += $varSize[$d - 1];
+				$varData[] = substr($input, ($offset+1+$varCount+$off), $varSize[$d]);
+			}
+			$offset += 1 + $varCount;
+			for($o = 0; $o < $varCount; $o++)
+				$offset += $varSize[$o];
+			$result[] = $varData;
+		}
+		return $result;
+	}
+
+	function RFI_encode($input) {
+		$result = chr(count($input));
+		foreach($input as $data){
+			$VarCount = chr(count($data));
+			$VarSize = '';
+			$VarData = '';
+			foreach($data as $var){
+				$VarSize .= chr(strlen($var));
+				$VarData .= $var;
+			}
+			$result .= $VarCount.$VarSize.$VarData;
+		}
+		return $result;
+	}
+
 	function close(){
 		fclose($this->open_memory);
 	}
@@ -49,7 +88,7 @@ class RAM{
 			$uad_max_size = $this->UAD_SIZE;
 		$data = '';
 		
-		$jdata = json_encode([]);
+		$jdata = $this->RFI_encode([]);
 		
 		$vdk_size = pack('i', $fsp_max_size);
 		$rfi_size = pack('i', strlen($jdata));
@@ -65,7 +104,7 @@ class RAM{
 		
 		$data .= $jdata;
 		$data .= str_repeat(chr(0), $uad_max_size); // 512 b un-allocate
-		$data .= str_repeat(chr(0), ($fsp_max_size - (20 + $uad_max_size))); //empty data
+		//$data .= str_repeat(chr(0), ($fsp_max_size - (20 + $uad_max_size))); //empty data
 		
 		$open = $this->open_memory;
 		fseek($open, 0);
@@ -82,7 +121,7 @@ class RAM{
 		$ald_size = unpack('i', fread($open,4))[1];
 		$fsp_size = unpack('i', fread($open,4))[1];
 		$uad_size = unpack('i', fread($open,4))[1];
-		$raw_json_data = fread($open, $rfi_size);
+		$raw_RFI_data = fread($open, $rfi_size);
 		$raw_uad_data = fread($open, $uad_size);
 		if($ald_size > 0)
 			$allocated_data = fread($open, $ald_size);
@@ -92,7 +131,7 @@ class RAM{
 		$ouh_data = md5(str_repeat(chr(0), $uad_size));
 		$uad_md5_hash = md5($raw_uad_data);
 		$ald_md5_hash = md5($allocated_data);
-		$rfi_md5_hash = md5($raw_json_data);
+		$rfi_md5_hash = md5($raw_RFI_data);
 		$vdk_hash = md5(0);//md5_file($path);
 		if($ouh_data == $uad_md5_hash)
 			$uad_writeable = 1;
@@ -126,7 +165,7 @@ class RAM{
 		if(strlen($fdata) > ($fsp_size - $rfi_size - $uad_size - 20))
 			return false;
 		
-		$raw_json_data = fread($open, $rfi_size);
+		$raw_RFI_data = fread($open, $rfi_size);
 		$raw_uad_data = fread($open, $uad_size);
 		if($ald_size > 0)
 			$allocated_data = fread($open, $ald_size);
@@ -135,12 +174,12 @@ class RAM{
 		
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_RFI_data);
 		if(isset($json_data)){
 			$json_data[] = [$filename, $ald_size, strlen($fdata)];
 			
 			$data = '';
-			$n_raw_json_data = json_encode($json_data);
+			$n_raw_json_data = $this->RFI_encode($json_data);
 			$open = $this->open_memory;
 			fseek($open, 0);
 			
@@ -179,11 +218,11 @@ class RAM{
 		$fsp_size = unpack('i', fread($open,4))[1];
 		$uad_size = unpack('i', fread($open,4))[1];
 		
-		$raw_json_data = fread($open, $rfi_size);
+		$raw_RFI_data = fread($open, $rfi_size);
 		$raw_uad_data = fread($open, $uad_size);
 		
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_RFI_data);
 		if(isset($json_data)){
 			$n_json_data = [];
 			$n = 0;
@@ -200,7 +239,7 @@ class RAM{
 			}
 			
 			$data = '';
-			$n_raw_json_data = json_encode($n_json_data);
+			$n_raw_json_data = $this->RFI_encode($n_json_data);
 			fseek($open, 0);
 			
 			$n_vdk_size = pack('i', $vdk_size);
@@ -241,7 +280,7 @@ class RAM{
 		if(strlen($fdata) > $uad_size)
 			return false;
 		
-		$raw_json_data = fread($open, $rfi_size);
+		$raw_RFI_data = fread($open, $rfi_size);
 		$raw_uad_data = fread($open, $uad_size);
 		if(md5($raw_uad_data) != md5(str_repeat(chr(0), $uad_size)))
 			return false;
@@ -250,14 +289,14 @@ class RAM{
 		else
 			$allocated_data = '';
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_RFI_data);
 		if(isset($json_data)){
 			$data = '';
 			$uad_data = $fdata;
 			if(strlen($fdata) < $uad_size)
 				$uad_data .= str_repeat(chr(0), ($uad_size - strlen($fdata)));
 			
-			$n_raw_json_data = json_encode($json_data);
+			$n_raw_json_data = $this->RFI_encode($json_data);
 			$open = $this->open_memory;
 			fseek($open, 0);
 			
@@ -294,12 +333,13 @@ class RAM{
 		fseek($open,16);
 		$uad_size = unpack('i', fread($open,4))[1];
 		
-		$raw_json_data = fread($open, $rfi_size);
-		
-		$json_data = @json_decode($raw_json_data, true);
+		$raw_RFI_data = fread($open, $rfi_size);
+		$data = '';
+		$json_data = @$this->RFI_decode($raw_RFI_data);
 		if(isset($json_data)){
 			$e = 0;
 			foreach($json_data as $file_to_find){
+				//print_r($file_to_find);
 				if($file_to_find[0] == $filename){
 					$e = 1;
 					$d = $file_to_find;
@@ -307,7 +347,8 @@ class RAM{
 			}
 			if($e == 1){
 				fseek($open, (20+$d[1]+$rfi_size+$uad_size));
-				$data = fread($open, $d[2]);
+				if($d[2] > 0)
+					$data = fread($open, $d[2]);
 			}else{
 				$data = false;
 			}
@@ -323,9 +364,9 @@ class RAM{
 		fseek($open,4);
 		$rfi_size = unpack('i', fread($open,4))[1];
 		fseek($open,20);
-		$raw_json_data = fread($open, $rfi_size);
+		$raw_RFI_data = fread($open, $rfi_size);
 		
-		$json_data = @json_decode($raw_json_data, true);
+		$json_data = @$this->RFI_decode($raw_RFI_data);
 		if(isset($json_data))
 			foreach($json_data as $file_to_find)
 				if($file_to_find[0] == $filename)
