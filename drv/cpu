@@ -144,6 +144,7 @@ class cpu{
 			$GLOBALS['vm']["RAM_R"]++;
 			$GLOBALS['vm']['ram_log'] .= "[READ] : ADDESS=$name LENGTH=".strlen($read)."\n";
 		}
+		$control->refresh_memmory();
 		return $read;
 	}
 	static function read_sm_cache(){
@@ -156,6 +157,7 @@ class cpu{
 		if(!isset($GLOBALS['static_memory_controller']))
 			return false;
 		$control = $GLOBALS['static_memory_controller'];
+		$control->refresh_memmory();
 		return $control->write_uad_data($data);
 	}
 	static function execute_code($code){
@@ -571,9 +573,9 @@ class MNC{
 	function data($set = null){
 		$task = $this->task;
 		if(is_null($set))
-			return json_decode(CPU::read_sm_block($task), true);
+			return $this->ALD_decode(CPU::read_sm_block($task), true);
 		else
-			CPU::create_sm_block($task, json_encode($set));
+			CPU::create_sm_block($task, $this->ALD_encode($set));
 	}
 	function task_set($task){
 		$this->task = $task;
@@ -608,6 +610,40 @@ class MNC{
 		elseif(preg_match($this->PATTERN, $input[1], $match))
 			return $this->compute($match[0]);
 		return;
+	}
+	function ALD_decode($input){
+		$result = [];
+		$size = ord($input[4]);
+		$offset = 5;
+		for($i = 0; $i < $size; $i++){
+			$DataSize = unpack('i', substr($input, $offset, 4))[1];
+			$NameSize = ord($input[$offset + 4]);
+			$VarSize = unpack('i', substr($input, ($offset + 5 + $NameSize), 4))[1];
+			$NameData = substr($input, ($offset + 5), $NameSize);
+			$VarData = substr($input, ($offset + 5 + $NameSize + 4), $VarSize);
+			if(substr($VarData,0,4) == chr(0)."ALD")
+				$result[$NameData] = $this->ALD_decode($VarData);
+			else
+				$result[$NameData] = $VarData;
+			$offset += $DataSize + 4;
+		}
+		return $result;
+	}
+
+	function ALD_encode($input) {
+		$result = chr(count($input));
+		foreach($input as $name => $data){
+			$NameSize = chr(strlen($name));
+			$NameData = $name;
+			if(is_array($data))
+				$VarData = $this->ALD_encode($data);
+			else
+				$VarData = $data;
+			$VarSize = pack('i', strlen($VarData));
+			$sdata = $NameSize.$NameData.$VarSize.$VarData;
+			$result .= pack('i',strlen($sdata)).$sdata;
+		}
+		return chr(0x00) . "ALD$result";
 	}
 	private function replace_var($string){
 		$data = $this->data();
